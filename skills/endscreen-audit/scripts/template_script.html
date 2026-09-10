@@ -1,0 +1,482 @@
+<script>
+const DATA = __GRAPH__;
+
+const NODE_W = 150, NODE_H = 146, NODE_GAP = 86, ISLAND_GAP = 110;
+// Cards must never sit close enough to hide an arrow running into one of them.
+const MIN_GAP = 56;
+const byId = new Map(DATA.nodes.map(n => [n.id, n]));
+const incoming = new Map(DATA.nodes.map(n => [n.id, []]));
+const outgoing = new Map(DATA.nodes.map(n => [n.id, []]));
+for (const edge of DATA.edges) { outgoing.get(edge.from).push(edge); incoming.get(edge.to).push(edge); }
+
+const degree = id => incoming.get(id).length + outgoing.get(id).length;
+const connected = DATA.nodes.filter(n => degree(n.id) > 0);
+const alone = DATA.nodes.filter(n => degree(n.id) === 0);
+
+/* ---- islands: the graph is several small clusters, not one network ---- */
+const neighbours = new Map(DATA.nodes.map(n => [n.id, new Set()]));
+for (const edge of DATA.edges) {
+  neighbours.get(edge.from).add(edge.to);
+  neighbours.get(edge.to).add(edge.from);
+}
+
+const islands = [];
+const visited = new Set();
+for (const node of connected) {
+  if (visited.has(node.id)) continue;
+  const island = [];
+  const queue = [node.id];
+  while (queue.length) {
+    const id = queue.pop();
+    if (visited.has(id)) continue;
+    visited.add(id);
+    island.push(id);
+    queue.push(...neighbours.get(id));
+  }
+  islands.push(island);
+}
+islands.sort((a, b) => b.length - a.length);
+
+// Small islands read best as a chain; larger ones as a ring around their most-linked video.
+const place = new Map();
+const laidOut = islands.map(island => {
+  const ordered = [...island].sort((a, b) => incoming.get(b).length - incoming.get(a).length);
+  const spots = new Map();
+  if (ordered.length <= 3) {
+    const chain = orderChain(island);
+    chain.forEach((id, i) => spots.set(id, { x: 0, y: i * (NODE_H + MIN_GAP + 30) }));
+  } else {
+    const centre = ordered[0];
+    const ring = island.filter(id => id !== centre);
+    const radius = Math.max(NODE_W + NODE_GAP,
+      (ring.length * (NODE_W + NODE_GAP)) / (2 * Math.PI));
+    spots.set(centre, { x: 0, y: 0 });
+    ring.forEach((id, i) => {
+      const angle = (i / ring.length) * Math.PI * 2 - Math.PI / 2;
+      spots.set(id, { x: Math.cos(angle) * radius, y: Math.sin(angle) * radius });
+    });
+  }
+  const xs = [...spots.values()].map(s => s.x), ys = [...spots.values()].map(s => s.y);
+  const minX = Math.min(...xs), minY = Math.min(...ys);
+  for (const spot of spots.values()) { spot.x -= minX; spot.y -= minY; }
+  return {
+    spots,
+    width: Math.max(...xs) - minX + NODE_W,
+    height: Math.max(...ys) - minY + NODE_H,
+  };
+});
+
+// Follow the arrows so a short island reads top to bottom in link order.
+function orderChain(island) {
+  const start = island.find(id => incoming.get(id).every(e => !island.includes(e.from)))
+    ?? island[0];
+  const chain = [start];
+  const left = new Set(island.filter(id => id !== start));
+  while (left.size) {
+    const next = outgoing.get(chain[chain.length - 1]).map(e => e.to).find(id => left.has(id))
+      ?? [...left][0];
+    chain.push(next);
+    left.delete(next);
+  }
+  return chain;
+}
+
+// Shelf-pack the islands left to right, wrapping onto a new row when full.
+const MAX_ROW = 1560;
+let cursorX = 0, cursorY = 0, shelfHeight = 0, widest = 0;
+for (const island of laidOut) {
+  if (cursorX > 0 && cursorX + island.width > MAX_ROW) {
+    cursorX = 0;
+    cursorY += shelfHeight + ISLAND_GAP;
+    shelfHeight = 0;
+  }
+  for (const [id, spot] of island.spots) {
+    place.set(id, { x: cursorX + spot.x, y: cursorY + spot.y });
+  }
+  cursorX += island.width + ISLAND_GAP;
+  widest = Math.max(widest, cursorX);
+  shelfHeight = Math.max(shelfHeight, island.height);
+}
+
+// Push apart any two cards left closer than MIN_GAP on both axes.
+for (let pass = 0; pass < 250; pass++) {
+  let moved = false;
+  const all = [...place.values()];
+  for (let i = 0; i < all.length; i++) {
+    for (let j = i + 1; j < all.length; j++) {
+      const a = all[i], b = all[j];
+      const dx = b.x - a.x, dy = b.y - a.y;
+      const overlapX = NODE_W + MIN_GAP - Math.abs(dx);
+      const overlapY = NODE_H + MIN_GAP - Math.abs(dy);
+      if (overlapX <= 0 || overlapY <= 0) continue;
+      moved = true;
+      if (overlapX < overlapY) {
+        const push = (dx >= 0 ? 1 : -1) * overlapX / 2;
+        a.x -= push; b.x += push;
+      } else {
+        const push = (dy >= 0 ? 1 : -1) * overlapY / 2;
+        a.y -= push; b.y += push;
+      }
+    }
+  }
+  if (!moved) break;
+}
+
+const margin = 44;
+const spots = [...place.values()];
+const shiftX = margin - Math.min(...spots.map(s => s.x));
+const shiftY = margin - Math.min(...spots.map(s => s.y));
+for (const spot of spots) { spot.x += shiftX; spot.y += shiftY; }
+const stageWidth = Math.max(...spots.map(s => s.x)) + NODE_W + margin;
+const stageHeight = Math.max(...spots.map(s => s.y)) + NODE_H + margin;
+
+/* ---- render ---- */
+const stage = document.getElementById('stage');
+const world = document.getElementById('world');
+const svg = document.getElementById('edges');
+world.style.width = stageWidth + 'px';
+world.style.height = stageHeight + 'px';
+svg.setAttribute('viewBox', `0 0 ${stageWidth} ${stageHeight}`);
+svg.style.width = stageWidth + 'px';
+svg.style.height = stageHeight + 'px';
+
+const box = id => {
+  const spot = place.get(id);
+  return { cx: spot.x + NODE_W / 2, cy: spot.y + NODE_H / 2, w: NODE_W, h: NODE_H };
+};
+
+// Where a ray leaving a card's centre crosses that card's border.
+function onEdgeOf(rect, angle, pad = 2) {
+  const dx = Math.cos(angle), dy = Math.sin(angle);
+  const scale = Math.min(
+    Math.abs(dx) < 1e-6 ? Infinity : (rect.w / 2) / Math.abs(dx),
+    Math.abs(dy) < 1e-6 ? Infinity : (rect.h / 2) / Math.abs(dy));
+  return { x: rect.cx + dx * (scale + pad), y: rect.cy + dy * (scale + pad) };
+}
+
+const svgNS = 'http://www.w3.org/2000/svg';
+const defs = document.createElementNS(svgNS, 'defs');
+defs.innerHTML =
+  '<marker id="tip" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" ' +
+  'orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="context-stroke"/></marker>';
+svg.appendChild(defs);
+
+const drawn = DATA.edges.map(edge => {
+  const path = document.createElementNS(svgNS, 'path');
+  path.setAttribute('class', 'link');
+  path.setAttribute('marker-end', 'url(#tip)');
+  svg.appendChild(path);
+  return { edge, path };
+});
+
+function drawEdge({ edge, path }) {
+  const a = box(edge.from), b = box(edge.to);
+  const angle = Math.atan2(b.cy - a.cy, b.cx - a.cx);
+  const start = onEdgeOf(a, angle);
+  const end = onEdgeOf(b, angle + Math.PI, 8);
+  const bend = 0.13;
+  const control = {
+    x: (start.x + end.x) / 2 - (end.y - start.y) * bend,
+    y: (start.y + end.y) / 2 + (end.x - start.x) * bend,
+  };
+  path.setAttribute('d', `M${start.x} ${start.y} Q${control.x} ${control.y} ${end.x} ${end.y}`);
+}
+
+drawn.forEach(drawEdge);
+
+const clock = seconds => {
+  if (seconds == null) return '—';
+  const m = Math.floor(seconds / 60), s = Math.round(seconds % 60);
+  return `${m}:${String(s).padStart(2, '0')}`;
+};
+const count = n => n == null ? '—' : n.toLocaleString('en-US');
+
+function escapeHtml(text) {
+  return text.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+}
+
+function nodeElement(node) {
+  const link = document.createElement(node.id.startsWith('playlist:') ? 'div' : 'a');
+  link.className = 'node' + (node.outside ? ' outside' : '');
+  if (link.tagName === 'A') {
+    link.href = 'https://www.youtube.com/watch?v=' + node.id;
+    link.target = '_blank';
+    link.rel = 'noopener';
+  }
+  link.dataset.id = node.id;
+  link.draggable = false;
+  const picture = node.thumbnail
+    ? `<img src="${node.thumbnail}" alt="">`
+    : `<div class="blank">${node.id.startsWith('playlist:') ? 'Playlist' : 'No thumbnail'}</div>`;
+  const tag = node.outside && node.kind !== 'Playlist'
+    ? `<span class="tag">${node.kind}</span>` : '';
+  link.innerHTML = `${picture}<div class="name">${escapeHtml(node.title)}</div>${tag}`;
+  return link;
+}
+
+const elements = new Map();
+for (const node of connected) {
+  const element = nodeElement(node);
+  const spot = place.get(node.id);
+  element.style.left = spot.x + 'px';
+  element.style.top = spot.y + 'px';
+  world.appendChild(element);
+  elements.set(node.id, element);
+}
+
+/* ---- the videos that link to no chosen video, split by what their end screen does ---- */
+const GROUPS = [
+  {
+    match: n => n.bestForViewer && n.mostRecentUpload,
+    heading: 'Both auto slots',
+    note: 'One slot YouTube picks per viewer, one that always shows the newest upload. ' +
+          'Neither is a video you chose.',
+  },
+  {
+    match: n => n.bestForViewer,
+    heading: 'Sends viewers to "Best for viewer"',
+    note: 'YouTube picks the video for each viewer. You have no say in where these send people.',
+  },
+  {
+    match: n => n.mostRecentUpload,
+    heading: 'Sends viewers to "Most recent upload"',
+    note: 'Always points at whatever you published last, whether or not it follows on.',
+  },
+  {
+    match: () => true,
+    heading: 'No video on the end screen at all',
+    note: 'A viewer who finishes these has nowhere to go from the end screen.',
+  },
+];
+
+const tray = document.getElementById('tray');
+const ungrouped = [...alone].sort((a, b) => (b.engagedViews || 0) - (a.engagedViews || 0));
+for (const group of GROUPS) {
+  const members = ungrouped.filter(group.match);
+  for (const member of members) ungrouped.splice(ungrouped.indexOf(member), 1);
+  if (!members.length) continue;
+  const section = document.createElement('div');
+  section.className = 'tray-group';
+  section.innerHTML =
+    `<h2><span class="how-many">${members.length}</span> ${escapeHtml(group.heading)}</h2>` +
+    `<p>${escapeHtml(group.note)}</p>`;
+  const grid = document.createElement('div');
+  grid.className = 'tray-grid';
+  for (const node of members) grid.appendChild(nodeElement(node));
+  section.appendChild(grid);
+  tray.appendChild(section);
+}
+
+const own = DATA.nodes.filter(n => !n.outside);
+const linksOn = own.filter(n => outgoing.get(n.id).length > 0).length;
+const autoSlots = own.reduce((sum, n) => sum + n.bestForViewer + n.mostRecentUpload, 0);
+document.getElementById('tallies').innerHTML = [
+  [own.length, 'long-form videos'],
+  [DATA.edges.length, 'pinned links'],
+  [linksOn, 'videos that link on'],
+  [autoSlots, 'auto slots dropped'],
+].map(([value, label]) => `<div class="tally"><b>${value}</b><span>${label}</span></div>`).join('');
+
+/* ---- hover ---- */
+const card = document.getElementById('card');
+
+function statsMarkup(node) {
+  if (node.outside) {
+    return `<div class="stats"><div class="stat"><b>${node.kind}</b>` +
+      '<span>not a published long-form video</span></div></div>';
+  }
+  return '<div class="stats">' + [
+    [count(node.engagedViews), 'engaged views'],
+    [node.clickThroughRate == null ? '—' : node.clickThroughRate.toFixed(2) + '%', 'click-through rate'],
+    [clock(node.averageViewDuration), 'avg view time'],
+    [node.averageViewPercentage == null ? '—' : node.averageViewPercentage + '%', 'avg view %'],
+  ].map(([value, label]) => `<div class="stat"><b>${value}</b><span>${label}</span></div>`).join('')
+    + '</div>';
+}
+
+function linksMarkup(node) {
+  const out = outgoing.get(node.id), into = incoming.get(node.id);
+  let markup = '<div class="links">';
+  if (out.length) {
+    markup += '<h3>Points to</h3><ul>' +
+      out.map(edge => `<li>${escapeHtml(byId.get(edge.to).title)}</li>`).join('') + '</ul>';
+  }
+  if (into.length) {
+    markup += `<h3>Linked from ${into.length} video${into.length > 1 ? 's' : ''}</h3><ul>` +
+      into.map(edge => `<li>${escapeHtml(byId.get(edge.from).title)}</li>`).join('') + '</ul>';
+  }
+  if (!node.outside) {
+    const also = [];
+    if (node.bestForViewer) also.push('"Best for viewer" &mdash; YouTube picks per viewer');
+    if (node.mostRecentUpload) also.push('"Most recent upload" &mdash; always the newest video');
+    if (node.subscribeElement) also.push('Subscribe element');
+    if (also.length) {
+      markup += '<h3>Also on the end screen</h3><ul>' +
+        also.map(item => `<li>${item}</li>`).join('') + '</ul>';
+    }
+  }
+  return markup === '<div class="links">' ? '' : markup + '</div>';
+}
+
+function show(node, element) {
+  const meta = node.published ? `${node.published} · ${clock(node.duration)} long`
+    : node.kind === 'Playlist' ? 'playlist' : 'on another channel';
+  card.innerHTML = `<h2>${escapeHtml(node.title)}</h2>` +
+    `<div class="meta">${meta}</div>${statsMarkup(node)}${linksMarkup(node)}`;
+  card.classList.add('on');
+  position(element);
+  stage.classList.add('focused');
+  const lit = new Set([node.id]);
+  for (const edge of outgoing.get(node.id)) lit.add(edge.to);
+  for (const edge of incoming.get(node.id)) lit.add(edge.from);
+  for (const [id, el] of elements) el.classList.toggle('lit', lit.has(id));
+  for (const { edge, path } of drawn) {
+    path.classList.toggle('lit', edge.from === node.id || edge.to === node.id);
+  }
+}
+
+function position(element) {
+  const rect = element.getBoundingClientRect();
+  const width = 320, height = card.offsetHeight;
+  let left = rect.right + 14;
+  if (left + width > window.innerWidth - 12) left = rect.left - width - 14;
+  left = Math.max(12, Math.min(left, window.innerWidth - width - 12));
+  const top = Math.max(12, Math.min(rect.top, window.innerHeight - height - 12));
+  card.style.left = left + 'px';
+  card.style.top = top + 'px';
+}
+
+function hide() {
+  card.classList.remove('on');
+  stage.classList.remove('focused');
+  for (const { path } of drawn) path.classList.remove('lit');
+  for (const [, el] of elements) el.classList.remove('lit');
+}
+
+/* ---- dragging: cards can be pulled apart to uncover the arrows beneath ---- */
+const home = new Map([...place].map(([id, spot]) => [id, { x: spot.x, y: spot.y }]));
+let currentScale = 1;
+
+// A press either moves a card or opens the video, never both. The click a drag
+// leaves behind is swallowed here, in the capture phase, before the link sees it.
+const DRAG_THRESHOLD = 5;
+let draggedAt = 0;
+const parked = new Map();
+
+function restoreHrefs() {
+  for (const [element, href] of parked) {
+    if (href !== null) element.setAttribute('href', href);
+  }
+  parked.clear();
+}
+document.addEventListener('click', event => {
+  if (Date.now() - draggedAt >= 500) return;
+  draggedAt = 0;  // one drag swallows one click, never the next real one
+  event.preventDefault();
+  event.stopPropagation();
+}, true);
+
+function moveNode(id, x, y) {
+  const spot = place.get(id);
+  spot.x = x;
+  spot.y = y;
+  const element = elements.get(id);
+  element.style.left = x + 'px';
+  element.style.top = y + 'px';
+  for (const item of drawn) {
+    if (item.edge.from === id || item.edge.to === id) drawEdge(item);
+  }
+}
+
+for (const [id, element] of elements) {
+  element.addEventListener('dragstart', event => event.preventDefault());
+  element.addEventListener('pointerdown', event => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    restoreHrefs();
+    const spot = place.get(id);
+    const grabX = event.clientX, grabY = event.clientY;
+    const originX = spot.x, originY = spot.y;
+    let moved = false;
+    element.classList.add('dragging');
+
+    const onMove = move => {
+      const dx = (move.clientX - grabX) / currentScale;
+      const dy = (move.clientY - grabY) / currentScale;
+      if (!moved && Math.hypot(move.clientX - grabX, move.clientY - grabY) < DRAG_THRESHOLD) return;
+      if (!moved) {
+        moved = true;
+        // A link with no href cannot navigate, whatever click the drag leaves behind.
+        parked.set(element, element.getAttribute('href'));
+        element.removeAttribute('href');
+      }
+      hide();
+      moveNode(id, originX + dx, originY + dy);
+    };
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
+      element.classList.remove('dragging');
+      if (moved) {
+        draggedAt = Date.now();
+        setTimeout(restoreHrefs, 350);
+      }
+    };
+
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
+  });
+}
+
+document.getElementById('reset').addEventListener('click', () => {
+  for (const [id, spot] of home) moveNode(id, spot.x, spot.y);
+});
+
+// Scale the drawing so the whole graph is visible without scrolling sideways.
+// A hidden stage measures zero wide, so leave the last good scale alone.
+function fit() {
+  if (!stage.clientWidth) return;
+  currentScale = Math.min(1, (stage.clientWidth - 24) / stageWidth);
+  world.style.transform = `scale(${currentScale})`;
+  stage.style.height = Math.ceil(stageHeight * currentScale) + 'px';
+}
+fit();
+window.addEventListener('resize', fit);
+
+for (const element of document.querySelectorAll('.node')) {
+  const node = byId.get(element.dataset.id);
+  element.addEventListener('mouseenter', () => show(node, element));
+  element.addEventListener('focus', () => show(node, element));
+  element.addEventListener('mouseleave', hide);
+  element.addEventListener('blur', hide);
+}
+
+/* ---- the two views: hidden, never rebuilt, so a dragged layout survives a visit to Repairs ---- */
+const tabs = [...document.querySelectorAll('.view-tab')];
+const views = [...document.querySelectorAll('.view')];
+
+function showView(name) {
+  hide();
+  for (const view of views) view.hidden = view.dataset.view !== name;
+  for (const tab of tabs) {
+    const chosen = tab.dataset.view === name;
+    tab.setAttribute('aria-selected', String(chosen));
+    tab.tabIndex = chosen ? 0 : -1;
+  }
+  if (name === 'map') fit();
+}
+
+tabs.forEach((tab, index) => {
+  tab.addEventListener('click', () => showView(tab.dataset.view));
+  tab.addEventListener('keydown', event => {
+    const step = { ArrowLeft: -1, ArrowRight: 1 }[event.key];
+    if (!step) return;
+    event.preventDefault();
+    const next = tabs[(index + step + tabs.length) % tabs.length];
+    showView(next.dataset.view);
+    next.focus();
+  });
+});
+</script>

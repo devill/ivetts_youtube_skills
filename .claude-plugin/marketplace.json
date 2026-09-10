@@ -1,0 +1,32 @@
+{
+  "name": "ivetts-youtube-skills",
+  "owner": {
+    "name": "Ivett Ördög",
+    "url": "https://github.com/devill"
+  },
+  "description": "Claude Code skills for YouTube creators, by Ivett Ördög",
+  "plugins": [
+    {
+      "name": "endscreen-audit",
+      "displayName": "End screen audit",
+      "description": "Maps which of a YouTube channel's published videos link to which, reads what every outro promises out loud, and turns the gaps into a prioritised worklist on one page.",
+      "source": "./",
+      "skills": [
+        "./skills/endscreen-audit"
+      ],
+      "strict": false,
+      "category": "content",
+      "tags": [
+        "youtube",
+        "end-screens",
+        "analytics",
+        "content-strategy",
+        "audit"
+      ],
+      "author": {
+        "name": "Ivett Ördög",
+        "url": "https://github.com/devill"
+      }
+    }
+  ]
+}
