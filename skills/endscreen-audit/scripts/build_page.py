@@ -6,13 +6,16 @@
 Reads DIR/data/graph.json, and DIR/data/actions.json and DIR/data/channel.json when
 they exist. Writes DIR/end-screen-audit.html (open this one from disk) and
 DIR/data/artifact.html (the same body, for publishing with the Artifact tool).
+
+Being the last step, it is also the cheap place to say what the run never collected,
+so it reports anything missing on stdout after writing the page.
 """
 
 import json
 from pathlib import Path
 
 import repairs
-from auth import data_path, load_json, resolve_work_dir, work_dir_parser
+from paths import data_path, load_json, resolve_work_dir, work_dir_parser
 
 HERE = Path(__file__).resolve().parent
 PAGE_NAME = 'end-screen-audit.html'
@@ -27,6 +30,25 @@ TABS = '''<div class="views" role="tablist" aria-label="View">
     <button type="button" class="view-tab" role="tab" id="tab-repairs" data-view="repairs"
             aria-controls="view-repairs" aria-selected="false" tabindex="-1">Repairs</button>
   </div>'''
+
+
+def report_missing_judgment(actions):
+    if actions:
+        return
+    print('data/actions.json is missing or empty, so the page has the map but no Repairs view. '
+          'The judgment step was not done: nothing has been read out of the transcripts and '
+          'turned into a worklist.')
+
+
+def report_missing_transcripts(work_dir, long_form):
+    missing = [video_id for video_id in long_form
+               if not data_path(work_dir, 'transcripts', f'{video_id}.txt').exists()]
+    if not missing:
+        print(f'All {len(long_form)} long-form videos have a transcript.')
+        return
+    print(f'{len(missing)} of the {len(long_form)} long-form videos have no transcript in '
+          'data/transcripts, so their outros were never read: ' + ', '.join(missing[:5])
+          + (', ...' if len(missing) > 5 else ''))
 
 
 def read_json(path, fallback=None):
@@ -62,8 +84,11 @@ def main():
     args = work_dir_parser(__doc__).parse_args()
     work_dir = resolve_work_dir(args.work)
 
+    long_form = load_json(data_path(work_dir, 'long_form.json'),
+                          'Run select_videos.py --work DIR first; it writes this file.')
+    actions = read_json(data_path(work_dir, 'actions.json'), fallback={})
     body = build_body(read_json(data_path(work_dir, 'graph.json')),
-                      read_json(data_path(work_dir, 'actions.json'), fallback={}),
+                      actions,
                       read_json(data_path(work_dir, 'channel.json'), fallback={}))
 
     # The artifact host supplies <!doctype>, <head> and <meta charset>; a file opened
@@ -72,6 +97,8 @@ def main():
     page = work_dir / PAGE_NAME
     page.write_text(DOCUMENT_HEAD + body + '\n</body>\n</html>\n', encoding='utf-8')
     print(f'{page}: {page.stat().st_size // 1024} KB')
+    report_missing_judgment(actions)
+    report_missing_transcripts(work_dir, long_form)
 
 
 if __name__ == '__main__':

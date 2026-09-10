@@ -250,7 +250,7 @@ const GROUPS = [
 ];
 
 const tray = document.getElementById('tray');
-const ungrouped = [...alone].sort((a, b) => (b.engagedViews || 0) - (a.engagedViews || 0));
+const ungrouped = [...alone].sort((a, b) => (b.views || 0) - (a.views || 0));
 for (const group of GROUPS) {
   const members = ungrouped.filter(group.match);
   for (const member of members) ungrouped.splice(ungrouped.indexOf(member), 1);
@@ -286,7 +286,7 @@ function statsMarkup(node) {
       '<span>not a published long-form video</span></div></div>';
   }
   return '<div class="stats">' + [
-    [count(node.engagedViews), 'engaged views'],
+    [count(node.views), 'views'],
     [node.clickThroughRate == null ? '—' : node.clickThroughRate.toFixed(2) + '%', 'click-through rate'],
     [clock(node.averageViewDuration), 'avg view time'],
     [node.averageViewPercentage == null ? '—' : node.averageViewPercentage + '%', 'avg view %'],

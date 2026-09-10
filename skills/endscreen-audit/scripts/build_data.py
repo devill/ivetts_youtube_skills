@@ -1,44 +1,54 @@
 #!/usr/bin/env python3
 """One JSON the page can render: long-form public videos, their stats, their end-screen links.
 
+Every fact comes from what the browser left in data/ — the Content page, the Shorts
+tab, the end-screen reads and the Studio analytics export.
+
 End-screen links come from YouTube Studio, not the public watch page: only Studio
 distinguishes a link the creator pinned from an auto slot ("Best for viewer", "Most
 recent upload") that YouTube fills differently for every viewer. Auto slots are dropped.
 """
 import base64
-import csv
 import json
 import re
 import sys
+import urllib.error
 import urllib.request
 
-from auth import data_path, load_json, resolve_work_dir, work_dir_parser
+from paths import data_path, load_json, resolve_work_dir, work_dir_parser
+from studio_export import published_date, studio_rows
+
+PRODUCED_BY = {
+    'videos.json': 'Read every upload from the Studio Content page into it (step 1 of the '
+                   'skill), then run select_videos.py.',
+    'shorts.json': 'Read the ids under the Studio Shorts tab into it (step 1 of the skill), '
+                   'then run select_videos.py.',
+    'long_form.json': 'Run select_videos.py --work DIR first; it writes this file.',
+    'studio_endscreens.json': "Read each long-form video's end screen in YouTube Studio into "
+                              'it (step 3 of the skill), as {"<video id>": ["<row>", ...]}.',
+}
 
 HEADERS = {'User-Agent': 'Mozilla/5.0'}
 BEST_FOR_VIEWER = 'Best for viewer'
 MOST_RECENT = 'Most recent upload'
 AUTO_SLOTS = {BEST_FOR_VIEWER, MOST_RECENT}
 
-CSV_EXPORT_HELP = (
-    'In YouTube Studio: Analytics -> Advanced mode -> date range Lifetime -> '
-    'Content tab -> Export current view -> Comma-separated values (.csv), then '
-    'unzip it and put "Table data.csv" there. It is the only source of '
-    'thumbnail impressions and click-through rate.'
-)
+
+def required(work_dir, name):
+    """A file an earlier step should have left behind, named with the step that leaves it."""
+    return load_json(data_path(work_dir, name), PRODUCED_BY[name])
 
 
-def seconds(iso):
-    hours, minutes, secs = (int(x or 0) for x in
-                            re.match(r'PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?', iso).groups())
-    return hours * 3600 + minutes * 60 + secs
+def videos_by_id(work_dir):
+    """Studio's visibility word is what the page calls the video's privacy."""
+    return {video['id']: {'id': video['id'], 'title': video['title'],
+                          'privacy': video['visibility'].lower()}
+            for video in required(work_dir, 'videos.json')}
 
 
-def studio_rows(work_dir):
-    table = data_path(work_dir, 'csv', 'Table data.csv')
-    if not table.exists():
-        raise SystemExit(f'No YouTube Studio export at {table}.\n{CSV_EXPORT_HELP}')
-    return {row['Content'].strip(): row for row in csv.DictReader(table.open())
-            if row['Content'].strip() != 'Total'}
+def duration_of(row):
+    seconds = row.get('Duration')
+    return int(seconds) if seconds else None
 
 
 def off_channel_targets(work_dir):
@@ -72,34 +82,33 @@ def number(text):
 
 def titles_to_ids(videos, long_form):
     """Two uploads can share a title; the published one is what an end screen means."""
-    by_title = {}
-    for video in sorted(videos.values(),
-                        key=lambda v: (v['id'] in long_form, v['privacy'] == 'public')):
-        by_title[video['title']] = video['id']
-    return by_title
+    def is_the_one_meant(video):
+        return video['id'] in long_form, video['privacy'] == 'public'
+
+    sharing_a_title = {}
+    for video in videos.values():
+        sharing_a_title.setdefault(video['title'], []).append(video)
+    return {title: max(group, key=is_the_one_meant)['id']
+            for title, group in sharing_a_title.items()}
 
 
-def node_for(video, row, measured, endscreen_rows):
-    duration = seconds(video['duration'])
+def node_for(video, row, endscreen_rows):
+    duration = duration_of(row)
     views = number(row.get('Views')) or 0
     watch_hours = number(row.get('Watch time (hours)')) or 0
-    average_duration = measured.get('averageViewDuration')
-    if average_duration is None and views:
-        average_duration = watch_hours * 3600 / views
-    average_percentage = measured.get('averageViewPercentage')
-    if average_percentage is None and average_duration and duration:
-        average_percentage = average_duration / duration * 100
+    average_duration = watch_hours * 3600 / views if views else None
+    average_percentage = (average_duration / duration * 100
+                          if average_duration and duration else None)
     return {
         'id': video['id'],
         'title': video['title'],
-        'published': video['publishedAt'][:10],
+        'published': published_date(row),
         'duration': duration,
         'thumbnail': thumbnail_data_uri(video['id']),
-        'engagedViews': measured.get('engagedViews'),
         'views': int(views),
         'impressions': int(number(row.get('Thumbnail impressions')) or 0),
         'clickThroughRate': number(row.get('Thumbnail click-through rate (%)')),
-        'averageViewDuration': average_duration and round(average_duration),
+        'averageViewDuration': round(average_duration) if average_duration else None,
         'averageViewPercentage': average_percentage and round(average_percentage, 1),
         'bestForViewer': endscreen_rows.count('Video: ' + BEST_FOR_VIEWER),
         'mostRecentUpload': endscreen_rows.count('Video: ' + MOST_RECENT),
@@ -156,38 +165,54 @@ def build_edges(work_dir, long_form, endscreens, by_title):
     return edges
 
 
-def outside_node(target, label, videos):
-    published = videos.get(target)
+def outside_kind(target, videos, shorts):
+    if target.startswith('playlist:'):
+        return 'Playlist'
+    video = videos.get(target)
+    if video is None:
+        return 'Other channel'
+    return 'Short' if target in shorts else video['privacy'].capitalize()
+
+
+def outside_node(target, label, videos, studio, shorts):
+    row = studio.get(target, {})
     return {
         'id': target,
         'title': label,
         'outside': True,
-        'kind': ('Playlist' if target.startswith('playlist:') else
-                 'Other channel' if not published else
-                 'Short' if published['privacy'] == 'public' else
-                 published['privacy'].capitalize()),
-        'published': published['publishedAt'][:10] if published else None,
-        'duration': seconds(published['duration']) if published else None,
+        'kind': outside_kind(target, videos, shorts),
+        'published': published_date(row),
+        'duration': duration_of(row),
         'thumbnail': None if target.startswith('playlist:') else thumbnail_data_uri(target),
     }
+
+
+def require_long_form(long_form):
+    if not long_form:
+        raise SystemExit(
+            'data/long_form.json is empty, so there is nothing to build a map out of.\n'
+            'select_videos.py found no published long-form video. Check that data/videos.json '
+            'holds the whole Studio Content page, then run select_videos.py again.')
 
 
 def main():
     args = work_dir_parser(__doc__).parse_args()
     work_dir = resolve_work_dir(args.work)
-    videos = {v['id']: v for v in load_json(data_path(work_dir, 'videos.json'))}
-    long_form = load_json(data_path(work_dir, 'long_form.json'))
-    endscreens = load_json(data_path(work_dir, 'studio_endscreens.json'))
-    analytics = load_json(data_path(work_dir, 'analytics.json'))
+    videos = videos_by_id(work_dir)
+    long_form = required(work_dir, 'long_form.json')
+    require_long_form(long_form)
+    shorts = set(required(work_dir, 'shorts.json'))
+    endscreens = required(work_dir, 'studio_endscreens.json')
     studio = studio_rows(work_dir)
     require_endscreens(long_form, endscreens)
 
-    nodes = [node_for(videos[video_id], studio.get(video_id, {}),
-                      analytics.get(video_id, {}), endscreens[video_id])
+    # Edges first: an unmatched end-screen target then fails in a second, not after 40 downloads.
+    edges = build_edges(work_dir, long_form, endscreens, titles_to_ids(videos, long_form))
+
+    nodes = [node_for(videos[video_id], studio.get(video_id, {}), endscreens[video_id])
              for video_id in long_form]
     known = {node['id'] for node in nodes}
 
-    edges = build_edges(work_dir, long_form, endscreens, titles_to_ids(videos, long_form))
     outside = {}
     for edge in edges:
         label = edge.pop('label')
@@ -195,7 +220,8 @@ def main():
         if edge['offChannel']:
             outside[edge['to']] = label
 
-    nodes += [outside_node(target, label, videos) for target, label in outside.items()]
+    nodes += [outside_node(target, label, videos, studio, shorts)
+              for target, label in outside.items()]
     nodes.sort(key=lambda node: node['published'] or '9999')
     data_path(work_dir, 'graph.json').write_text(
         json.dumps({'nodes': nodes, 'edges': edges}, indent=1))
