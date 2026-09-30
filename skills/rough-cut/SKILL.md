@@ -28,18 +28,29 @@ Always normalise candidate identities as `clip|{float(start):.4f}`.
 
 ## Ask before starting
 
-Ask all six questions in one message:
+First work out what you can on your own: clip names and count from the folder, durations from a
+quick probe, the spoken language from a first transcription pass, and any script, teleprompter
+export or GPS tracks sitting beside the footage. Ask the creator only what is still unknown, all
+in one message:
 
-1. Which folder is the footage, and which files are in scope?
-2. What language is spoken?
+1. Which folder is the footage, and which files are in scope? (Only if the folder is ambiguous.)
+2. What language is spoken? (Only if you have not worked it out from the footage.)
 3. Is there a script of what was meant to be said (teleprompter text)?
-4. What should the video's shape be: sections, their order and target length? If you do not know yet, we can propose it from the material.
-5. Which editor do you cut in? This decides which export matters.
-6. If an LLM audio-judging pass would use a paid API: would you like the rough cost estimate and a go-ahead before it runs?
+4. What should the video's shape be: sections, their order and target length? If they do not know
+   yet, propose it from the material later.
+5. Which editor do they cut in? This decides which export matters.
+6. If an LLM audio pass would use a paid API: the rough cost estimate and a go-ahead.
 
 ## 1. Transcribe every clip
 
-Create the work folder and `transcripts/`. Run Whisper or an installed equivalent once per clip. Pass the language explicitly. Keep timestamped output when available. See `reference/transcription.md`.
+Create the work folder and `transcripts/`. Prefer a **subagent with audio input** over Whisper: in
+a real edit a Gemini Flash subagent heard four false starts at the top of an intro that Whisper
+had silently deleted from its text (`gemini-flash-latest` worked; the numbered `gemini-2.5-flash`
+name 404'd). Ask it for a verbatim transcript — false starts, stutters and repeats kept — with
+segment timestamps, per speech region. Whisper remains the fallback when there is no audio-capable
+model or the footage must stay free and local; its text is then good enough for grouping, but
+never for choosing takes. Either way: pass the language explicitly, one transcript per clip. See
+`reference/transcription.md`.
 
 ## 2. Find true speech regions
 
@@ -51,7 +62,11 @@ Read all transcripts and group attempts by the section they try to say. Use the 
 
 ## 4. Pre-select promising takes
 
-Use an LLM with audio input only as a filter. Ask for every complete, cleanly delivered sentence and retain alternate phrasings. Verify every claimed span against the real timestamps. See `reference/judging-takes.md`. Get approval before paid API use.
+Use an LLM with audio input only as a filter. If the transcripts came from the audio subagent in
+phase 1, its verbatim per-attempt output is the judging input — have it rate what it already
+heard, and spot-check by ear, instead of re-listening from scratch. Ask for every complete,
+cleanly delivered sentence and retain alternate phrasings. Verify every claimed span against the
+real timestamps. See `reference/judging-takes.md`. Get approval before paid API use.
 
 ## 5. Fix transcript words when useful
 
@@ -71,7 +86,9 @@ Write `notes.md` with the footage and work paths, what is complete, which marks 
 
 ## Rules that come from real edits
 
-- Whisper transcribes what was said, not how it was said. It silently deletes false starts and stutters. Never choose takes from transcript text alone; judge audio.
+- Whisper transcribes what was said, not how it was said: it silently deletes false starts and
+  stutters. A model with audio input does not — prefer it as the transcriber of record, and never
+  choose or cut takes from transcript text alone; judge audio.
 - Speech-to-text end timestamps are word onsets. Every out-point gets 0.6 seconds of tail. Every in-point gets 0.4 seconds of pre-roll. The player already pads playback.
 - Transcripts are expensive source files. Never delete them. Put corrections in new files.
 - Group by attempted place, topic or scene, never text similarity. Rephrasing is normal. Most of the time one of the last recordings is best.

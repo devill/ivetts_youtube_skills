@@ -5,6 +5,11 @@ Use Gemini, an OpenAI model, or a suitable local audio model when available.
 Do not present its choices as the final edit.
 The creator's taste decides between usable alternatives.
 
+If the transcripts came from the audio-capable subagent, its verbatim per-attempt output is this
+pass's input: have it rate the attempts it already transcribed, and spot-check a few by ear.
+Only re-listen from scratch when the transcripts came from Whisper, whose text hides false starts
+and stutters.
+
 Start from `speech.json` for each clip.
 Use its acoustic speech regions, not guessed text boundaries.
 Split a region longer than about three minutes.
