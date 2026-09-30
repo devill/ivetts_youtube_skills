@@ -7,6 +7,31 @@
   "description": "Claude Code skills for YouTube creators, by Ivett Ördög",
   "plugins": [
     {
+      "name": "rough-cut",
+      "displayName": "Rough cut from raw footage",
+      "description": "Turns a folder of raw talking-head footage with multiple takes into a rough cut: transcribes every clip, groups the takes into sections in the video's intended order, pre-selects the cleanly delivered ones, lets the creator mark use, maybe or reject in a browser workbench, and exports the marked timeline for Premiere Pro, Final Cut Pro or DaVinci Resolve.",
+      "source": "./",
+      "skills": [
+        "./skills/rough-cut"
+      ],
+      "strict": false,
+      "category": "editing",
+      "tags": [
+        "youtube",
+        "video-editing",
+        "transcription",
+        "rough-cut",
+        "takes",
+        "premiere-pro",
+        "final-cut",
+        "davinci-resolve"
+      ],
+      "author": {
+        "name": "Ivett Ördög",
+        "url": "https://github.com/devill"
+      }
+    },
+    {
       "name": "endscreen-audit",
       "displayName": "End screen audit",
       "description": "Maps which of a YouTube channel's published videos link to which, reads what every outro promises out loud, and turns the gaps into a prioritised worklist on one page.",

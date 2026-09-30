@@ -81,3 +81,55 @@ not a two-minute job.
 A single HTML file. It works offline, it follows your light or dark theme, and the thumbnails
 are baked into it, so you can keep it, mail it, or open it in a year. Ask and Claude will
 publish it as a link as well.
+
+---
+
+## rough-cut
+
+```
+/plugin install rough-cut@ivetts-youtube-skills
+```
+
+You recorded the same part of your video three, four, five times, and now there are hours of
+takes and no edit. Turning that folder into a first timeline by hand is an evening of scrubbing.
+This skill does the boring parts and leaves the choices with you.
+
+Ask for it by name, or with *"turn my footage into a rough cut"*, *"transcribe my takes and pick
+the best ones"*, *"I recorded everything twice, help me choose"*, or *"make me an A-roll
+string-out"*.
+
+### What it does
+
+Claude transcribes every clip, finds where you actually speak, groups the takes into the sections
+of your video, and listens for the attempts where you delivered the whole thing cleanly. What it
+thinks might work lands in a simple page: each attempt with its words, a play button, and three
+buttons — use it, maybe, or reject it. You watch, you click, you type notes if something bothers
+you. Everything saves as you go.
+
+When you are done, Claude writes a timeline file. Premiere Pro, Final Cut Pro and DaVinci Resolve
+each get the dialect they understand, your sections already in the order you said the video
+should go, and the takes you maybe'd kept on the timeline but switched off, so flipping one is a
+click in your editor.
+
+A few things it refuses to get wrong, learned from real edits: your transcripts are kept forever,
+because re-transcribing costs hours; a transcript that reads clean can hide that you stuttered,
+so takes are judged by ear, never by text alone; and the last word of every take gets a little
+extra room, because speech recognition is always in a hurry at the end of a sentence.
+
+### What you do
+
+Tell Claude where the footage is, what language you speak in it, and — if you recorded from a
+teleprompter — where the script is. Say which editor you cut in. If you already know the order
+the video should tell its story in, say so; if you don't, Claude proposes one from the material
+and you correct it.
+
+Then mark your takes. That part is yours, because which take is best is taste: a take with wind
+noise and the right energy beats a technically perfect read that has none.
+
+If Claude uses a paid AI service to listen through your takes, it tells you the rough cost first
+and waits for your go-ahead.
+
+### What you get back
+
+A folder with your transcripts, the speech map, your marks, and the timeline files — plus a
+`notes.md` so you can pick this up in a fresh session months later without starting over.
