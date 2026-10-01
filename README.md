@@ -1,34 +1,45 @@
 # Ivett's YouTube skills
 
-Tools for YouTube creators that run inside **Claude Code** — Anthropic's assistant that works on
-your own machine, in your own browser, with your own channel. Nothing is stored on anyone else's
-server.
+Tools for YouTube creators that run inside **pi** — a coding agent that works on your own
+machine, in your own browser, with your own channel. Nothing is stored on anyone else's server.
 
-You do not need to be a programmer. You copy two commands once, and after that you ask for
+You do not need to be a programmer. You copy a few commands once, and after that you ask for
 things in plain English.
 
 ## Setting up, once
 
-1. Install Claude Code: <https://claude.com/claude-code>. Open it in a terminal.
-2. Add this collection:
+1. Install pi. You need Node.js first: type `npm --version` in a terminal; if it answers with a
+   number you have it, and if not, the installer at <https://nodejs.org> is two clicks. Then:
 
    ```
-   /plugin marketplace add devill/ivetts_youtube_skills
+   npm install -g --ignore-scripts @earendil-works/pi-coding-agent
    ```
 
-3. Install the skill you want, below.
+2. Get the AI that powers it. These skills recommend **OpenCode Go**: a $10/month subscription
+   with generous limits, and pi is one of the clients it officially supports. Subscribe at
+   <https://opencode.ai/go>, copy your API key, then paste this into a terminal with your key in
+   place of `PASTE-YOUR-KEY`:
+
+   ```
+   echo '{"opencode-go": {"type": "api_key", "key": "PASTE-YOUR-KEY"}}' > ~/.pi/agent/auth.json
+   ```
+
+3. Install this collection of skills:
+
+   ```
+   pi install git:github.com/devill/ivetts_youtube_skills
+   ```
+
+4. Start `pi` in any folder and ask for a skill by name. The first time, pi asks whether to trust
+   the folder; say yes.
 
 You also need Python 3, which every Mac and most Linux machines already have. Type `python3
---version` in the terminal; if it answers with a number you are set, and if it does not, Claude
-will tell you how to get it.
+--version` in the terminal; if it answers with a number you are set, and if it does not, your
+agent will tell you how to get it.
 
 ---
 
 ## endscreen-audit
-
-```
-/plugin install endscreen-audit@ivetts-youtube-skills
-```
 
 Your back catalogue is traffic you have already paid for. End screens decide where it goes next
 — and on most channels nobody has looked at them since the day each video went up.
@@ -64,14 +75,14 @@ repackaging it chases people who were never yours.
 
 ### What you do
 
-Sign in to YouTube Studio in Chrome, set it to English, and leave the window on screen. Claude
+Sign in to YouTube Studio in Chrome, set it to English, and leave the window on screen. The agent
 reads your channel through it: your video list, your end screens, and each video's transcript.
-One step is yours: Claude sets up the lifetime analytics export and then asks you to press the
+One step is yours: the agent sets up the lifetime analytics export and then asks you to press the
 download button, because Chrome refuses downloads that software starts. That export is the only
 place YouTube puts click-through rate.
 
-A video with captions turned off has no transcript to read, so its outro cannot be checked.
-Claude tells you which ones those were.
+A video with captions turned off has no transcript to read, so its outro cannot be checked. The
+agent tells you which ones those were.
 
 Then leave it alone for a while. It visits every published video, so a fifty-video channel is
 not a two-minute job.
@@ -79,16 +90,12 @@ not a two-minute job.
 ### What you get back
 
 A single HTML file. It works offline, it follows your light or dark theme, and the thumbnails
-are baked into it, so you can keep it, mail it, or open it in a year. Ask and Claude will
+are baked into it, so you can keep it, mail it, or open it in a year. Ask and your agent will
 publish it as a link as well.
 
 ---
 
 ## rough-cut
-
-```
-/plugin install rough-cut@ivetts-youtube-skills
-```
 
 You recorded the same part of your video three, four, five times, and now there are hours of
 takes and no edit. Turning that folder into a first timeline by hand is an evening of scrubbing.
@@ -100,13 +107,13 @@ string-out"*.
 
 ### What it does
 
-Claude transcribes every clip, finds where you actually speak, groups the takes into the sections
+The agent transcribes every clip, finds where you actually speak, groups the takes into the sections
 of your video, and listens for the attempts where you delivered the whole thing cleanly. What it
 thinks might work lands in a simple page: each attempt with its words, a play button, and three
 buttons — use it, maybe, or reject it. You watch, you click, you type notes if something bothers
 you. Everything saves as you go.
 
-When you are done, Claude writes a timeline file. Premiere Pro, Final Cut Pro and DaVinci Resolve
+When you are done, the agent writes a timeline file. Premiere Pro, Final Cut Pro and DaVinci Resolve
 each get the dialect they understand, your sections already in the order you said the video
 should go, and the takes you maybe'd kept on the timeline but switched off, so flipping one is a
 click in your editor.
@@ -118,15 +125,15 @@ extra room, because speech recognition is always in a hurry at the end of a sent
 
 ### What you do
 
-Tell Claude where the footage is, what language you speak in it, and — if you recorded from a
+Tell the agent where the footage is, what language you speak in it, and — if you recorded from a
 teleprompter — where the script is. Say which editor you cut in. If you already know the order
-the video should tell its story in, say so; if you don't, Claude proposes one from the material
+the video should tell its story in, say so; if you don't, the agent proposes one from the material
 and you correct it.
 
 Then mark your takes. That part is yours, because which take is best is taste: a take with wind
 noise and the right energy beats a technically perfect read that has none.
 
-If Claude uses a paid AI service to listen through your takes, it tells you the rough cost first
+If the agent uses a paid AI service to listen through your takes, it tells you the rough cost first
 and waits for your go-ahead.
 
 ### What you get back
